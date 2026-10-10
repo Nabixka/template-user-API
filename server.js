@@ -1,16 +1,30 @@
 const express = require("express")
 const cors = require("cors")
+const helmet = require("helmet")
 const jwt = require("jsonwebtoken")
+const bcrypt = require("bcrypt")
+const crypto = require("crypto")
+const cookieParser = require("cookie-parser")
 const { pool } = require("./config")
+const { rateLimit } = require("express-rate-limit")
 
 const port = process.env.APP_PORT || 3000
 const app = express()
 
-const bcrypt = require("bcrypt")
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 100,
+    message: { message: "Too Many Requests" }
+})
 
-// Cors
-app.use(cors())
+app.use(cors({
+    origin: process.env.CORS_ORIGIN,
+    methods: ["POST", "DELETE"],
+    credentials: true
+}))
+app.use(helmet())
 app.use(express.json())
+app.use(cookieParser())
 
 function generateAccessToken(id, username) {
   const token = jwt.sign(
@@ -22,28 +36,28 @@ function generateAccessToken(id, username) {
   return token
 }
 
+function hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex')
+}
+
 async function checkEmailExist(email) {
   const getUserByEmail = await pool.query(
-    `
-        SELECT * FROM users WHERE email =  $1`,
+    `SELECT * FROM users WHERE email = $1`,
     [email],
   )
-
   return getUserByEmail.rows[0]
 }
 
 async function checkUsernameExist(username) {
   const getUserByUsername = await pool.query(
-    `
-        SELECT * FROM users WHERE username =  $1`,
+    `SELECT * FROM users WHERE username = $1`,
     [username],
   )
-
   return getUserByUsername.rows[0]
 }
 
 // Register
-app.post("/register", async (req, res) => {
+app.post("/register", limiter, async (req, res) => {
   try {
     const { username, email, password } = req.body
 
@@ -70,29 +84,37 @@ app.post("/register", async (req, res) => {
     const hashPassword = await bcrypt.hash(password, 10)
 
     const insertUser = await pool.query(
-      `
-            INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username`,
+      `INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username`,
       [username, email, hashPassword],
     )
 
-    const accessToken = generateAccessToken(
-      insertUser.rows[0].id,
-      insertUser.rows[0].username,
-    )
+    const userId = insertUser.rows[0].id
+    const userUsername = insertUser.rows[0].username
+
+    const accessToken = generateAccessToken(userId, userUsername)
     const refreshToken = jwt.sign(
-      { id: insertUser.rows[0].id, username: insertUser.rows[0].username },
+      { id: userId, username: userUsername },
       process.env.JWT_SECRET_REFRESH,
+      { expiresIn: "7d" }
     )
 
+    const hashedRefreshToken = hashToken(refreshToken)
+
     await pool.query(`UPDATE users SET token = $1 WHERE id = $2`, [
-      refreshToken,
-      insertUser.rows[0].id,
+      hashedRefreshToken,
+      userId,
     ])
+
+    res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 
+    })
 
     return res.status(201).json({
       message: "Berhasil Membuat Akun",
       access_token: accessToken,
-      refresh_token: refreshToken,
     })
   } catch (err) {
     return res.status(500).json({
@@ -103,7 +125,7 @@ app.post("/register", async (req, res) => {
 })
 
 // Login
-app.post("/login", async (req, res) => {
+app.post("/login", limiter, async (req, res) => {
   try {
     const { name, password } = req.body
 
@@ -114,8 +136,7 @@ app.post("/login", async (req, res) => {
     }
 
     const isUserExist = await pool.query(
-      `
-            SELECT * FROM users WHERE email = $1 OR username = $1`,
+      `SELECT * FROM users WHERE email = $1 OR username = $1`,
       [name],
     )
     if (isUserExist.rows.length === 0) {
@@ -124,50 +145,54 @@ app.post("/login", async (req, res) => {
       })
     }
 
-    const isPassword = await bcrypt.compare(
-      password,
-      isUserExist.rows[0].password,
-    )
+    const user = isUserExist.rows[0]
+    const isPassword = await bcrypt.compare(password, user.password)
     if (!isPassword) {
       return res.status(400).json({
         message: "Password Salah",
       })
     }
 
-    const accessToken = generateAccessToken(
-      isUserExist.rows[0].id,
-      isUserExist.rows[0].username,
-    )
+    const accessToken = generateAccessToken(user.id, user.username)
     const refreshToken = jwt.sign(
-      { id: isUserExist.rows[0].id, username: isUserExist.rows[0].username },
+      { id: user.id, username: user.username },
       process.env.JWT_SECRET_REFRESH,
+      { expiresIn: "7d" }
     )
 
-    const updateToken = await pool.query(
-      `
-            UPDATE users SET token = $1 WHERE username = $2 OR email = $2`,
-      [refreshToken, name],
+    const hashedRefreshToken = hashToken(refreshToken)
+
+    await pool.query(
+      `UPDATE users SET token = $1 WHERE id = $2`,
+      [hashedRefreshToken, user.id],
     )
+
+    res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+    })
 
     return res.json({
       message: "Berhasil Login",
       access_token: accessToken,
-      refresh_token: refreshToken,
     })
   } catch (err) {
     return res.status(500).json({
       message: "Gangguan Terhadap Server",
+      error: err.message,
     })
   }
 })
 
 // Refresh Token
-app.post("/refresh-token", async (req, res) => {
+app.post("/refresh-token", limiter, async (req, res) => {
   try {
-    const { refreshToken } = req.body
+    const refreshToken = req.cookies.refreshToken
     if (!refreshToken) {
       return res.status(401).json({
-        message: "Anda Belom Login",
+        message: "Anda Belum Login",
       })
     }
 
@@ -177,9 +202,11 @@ app.post("/refresh-token", async (req, res) => {
       async (err, user) => {
         if (err) return res.sendStatus(403)
 
+        const hashedRefreshToken = hashToken(refreshToken)
+
         const result = await pool.query(
           `SELECT * FROM users WHERE id = $1 AND token = $2`,
-          [user.id, refreshToken],
+          [user.id, hashedRefreshToken],
         )
         if (result.rows.length === 0) {
           return res
@@ -190,7 +217,7 @@ app.post("/refresh-token", async (req, res) => {
         const accessToken = generateAccessToken(user.id, user.username)
 
         res.json({
-          message: "Berhasil Refresh TOken",
+          message: "Berhasil Refresh Token",
           access_token: accessToken,
         })
       },
@@ -206,15 +233,23 @@ app.post("/refresh-token", async (req, res) => {
 // Endpoint Logout
 app.delete("/logout", async (req, res) => {
   try {
-    const { refreshToken } = req.body
+    const refreshToken = req.cookies.refreshToken
 
-    const deleteToken = await pool.query(
-      `
-            UPDATE users SET token = $1 WHERE token = $2`,
-      [null, refreshToken],
-    )
+    if (refreshToken) {
+      const hashedRefreshToken = hashToken(refreshToken)
+      await pool.query(
+        `UPDATE users SET token = $1 WHERE token = $2`,
+        [null, hashedRefreshToken],
+      )
+    }
 
-    res.sendStatus(204)
+    res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
+    })
+
+    return res.sendStatus(204)
   } catch (err) {
     return res.status(500).json({
       message: "Gangguan Terhadap Server",

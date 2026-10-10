@@ -1,19 +1,19 @@
 # Template User API
 
-Template API untuk autentikasi user menggunakan Node.js, Express.js, PostgreSQL, JWT, dan bcrypt.
+A user authentication API template built with Node.js, Express.js, PostgreSQL, JWT, and bcrypt.
 
-## Fitur
+## Features
 
-- Registrasi user baru
-- Login menggunakan email atau username
-- Password hashing dengan bcrypt
-- JSON Web Token (JWT) untuk autentikasi
-- Refresh token untuk memperbarui access token
-- Logout dengan menghapus token aktif
-- Validasi dasar input dan pengecekan duplikasi email/username
+- User registration
+- Login using email or username
+- Password hashing with bcrypt
+- JSON Web Token (JWT) authentication
+- Refresh token support to renew access tokens
+- Logout by invalidating the active refresh token
+- Basic input validation and duplicate email/username checks
 
 ## Tech Stack
-    
+
 - Node.js
 - Express.js
 - PostgreSQL
@@ -21,7 +21,7 @@ Template API untuk autentikasi user menggunakan Node.js, Express.js, PostgreSQL,
 - bcrypt
 - dotenv
 
-## Struktur Project
+## Project Structure
 
 ```bash
 .
@@ -35,30 +35,30 @@ Template API untuk autentikasi user menggunakan Node.js, Express.js, PostgreSQL,
 └── node_modules/
 ```
 
-## Persyaratan
+## Requirements
 
-Sebelum menjalankan project, pastikan Anda sudah menyiapkan:
+Before running the project, make sure you have:
 
 - Node.js v18+
 - PostgreSQL database
-- Environment variable yang sudah diatur
+- Environment variables configured properly
 
 ## Setup
 
-1. Clone atau unduh project ini.
-2. Install dependency:
+1. Clone or download this project.
+2. Install dependencies:
 
 ```bash
 npm install
 ```
 
-3. Buat file `.env` berdasarkan `.env.example`:
+3. Create a `.env` file from `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-4. Atur nilai variabel di file `.env`:
+4. Set the values in the `.env` file:
 
 ```env
 DB_NAME=your_database_name
@@ -70,32 +70,32 @@ JWT_SECRET_ACCESS=your_access_secret
 JWT_SECRET_REFRESH=your_refresh_secret
 ```
 
-## Migrasi Database
+## Database Migration
 
-Project ini memiliki script migrasi untuk membuat tabel `users`.
+This project includes a migration script to create the `users` table.
 
 ```bash
 node migrate.js
 ```
 
-## Menjalankan Server
+## Run the Server
 
 ```bash
 node server.js
 ```
 
-Server akan berjalan di port `3000` secara default, atau bisa diubah melalui variabel `APP_PORT`.
+The server runs on port `3000` by default, or it can be changed using the `APP_PORT` environment variable.
 
-## Endpoint API
+## API Endpoints
 
-| Method | Endpoint | Deskripsi |
+| Method | Endpoint | Description |
 |---|---|---|
-| POST | `/register` | Mendaftarkan user baru |
-| POST | `/login` | Login user dengan email/username dan password |
-| POST | `/refresh-token` | Memperbarui access token menggunakan refresh token |
-| DELETE | `/logout` | Logout dengan menghapus refresh token |
+| POST | `/register` | Register a new user |
+| POST | `/login` | Log in with email/username and password |
+| POST | `/refresh-token` | Refresh the access token using the refresh token |
+| DELETE | `/logout` | Log out by invalidating the refresh token |
 
-## Contoh Request
+## Example Requests
 
 ### Register
 
@@ -144,24 +144,24 @@ Content-Type: application/json
 }
 ```
 
-## Response Sukses
+## Success Response
 
-Contoh response dari endpoint register/login:
+Example response from the register/login endpoints:
 
 ```json
 {
-  "message": "Berhasil Login",
+  "message": "Login Successful",
   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
-## Catatan
+## Notes
 
-- Pastikan `JWT_SECRET_ACCESS` dan `JWT_SECRET_REFRESH` selalu berbeda dan aman.
-- Database PostgreSQL harus aktif sebelum menjalankan server.
-- Untuk kebutuhan produksi, disarankan menambahkan validasi lebih lanjut seperti middleware autentikasi yang lebih aman, rate limiting, dan error handling yang lebih ketat.
+- Make sure `JWT_SECRET_ACCESS` and `JWT_SECRET_REFRESH` are always different and secure.
+- The PostgreSQL database must be running before starting the server.
+- For production use, it is recommended to add stronger validation, better authentication middleware, rate limiting, and more robust error handling.
 
-## Lisensi
+## License
 
-Project ini dibuat sebagai template API user dan dapat dimodifikasi sesuai kebutuhan.
+This project is created as a user API template and can be modified according to your needs.

@@ -7,7 +7,8 @@ async function migrate(){
             id SERIAL PRIMARY KEY,
             username VARCHAR UNIQUE,
             email VARCHAR UNIQUE,
-            password TEXT
+            password TEXT,
+            token TEXT
             )
         `)
 
